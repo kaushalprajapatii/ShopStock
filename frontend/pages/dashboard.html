@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard – ShopStock</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .dept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 10px; margin-bottom: 24px; }
+    .dept-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; text-align: center; }
+    .dept-card .dept-name { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); margin-bottom: 6px; }
+    .dept-card .dept-count { font-family: var(--font-head); font-size: 1.4rem; font-weight: 800; }
+    .recent-table td:first-child { font-family: var(--font-head); font-weight: 700; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media(max-width:768px){ .grid-2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div id="sidebar-placeholder"></div>
+  <div class="app-layout">
+    <div class="main-content">
+      <div class="topbar">
+        <button class="hamburger" id="hamburger">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="topbar-title">Dashboard</span>
+        <span id="today-date" style="font-size:0.72rem;color:var(--text3)"></span>
+      </div>
+      <div class="page-body">
+
+        <div id="low-stock-banner" class="alert-banner" style="display:none">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span id="low-stock-text"></span>
+          <a href="/low-stock.html" style="margin-left:auto;color:var(--danger);font-weight:700;font-size:0.72rem">View →</a>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card yellow">
+            <div class="stat-label">Total Products</div>
+            <div class="stat-value" id="stat-products">—</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-label">Stock Value</div>
+            <div class="stat-value" id="stat-value">—</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-label">Today's Sales</div>
+            <div class="stat-value" id="stat-sales">—</div>
+          </div>
+          <div class="stat-card orange">
+            <div class="stat-label">Today's Purchases</div>
+            <div class="stat-value" id="stat-purchases">—</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-label">Low Stock Items</div>
+            <div class="stat-value" id="stat-lowstock">—</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Departments -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">Products by Department</span></div>
+            <div class="dept-grid" id="dept-grid">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
+          </div>
+
+          <!-- Recent Transactions -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Recent Transactions</span>
+              <a href="/transactions.html" class="btn btn-ghost btn-sm">View All</a>
+            </div>
+            <div id="recent-list">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/sidebar.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    Auth.requireAuth();
+
+    document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-IN', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    });
+
+    async function loadDashboard() {
+      try {
+        const data = await Api.get('/dashboard/summary');
+
+        document.getElementById('stat-products').textContent = data.total_products;
+        document.getElementById('stat-value').textContent = formatCurrency(data.total_stock_value);
+        document.getElementById('stat-sales').textContent = formatCurrency(data.today_sales);
+        document.getElementById('stat-purchases').textContent = formatCurrency(data.today_purchases);
+        document.getElementById('stat-lowstock').textContent = data.low_stock_count;
+
+        // Low stock banner
+        if (data.low_stock_count > 0) {
+          document.getElementById('low-stock-banner').style.display = 'flex';
+          document.getElementById('low-stock-text').textContent =
+            `${data.low_stock_count} product${data.low_stock_count > 1 ? 's are' : ' is'} running low on stock!`;
+        }
+
+        // Department grid
+        const deptGrid = document.getElementById('dept-grid');
+        const deptColors = {
+          'Stationery': 'var(--accent)',
+          'Gifts': 'var(--accent2)',
+          'Furniture': 'var(--info)',
+          'Sports': 'var(--success)',
+          'Daily Items': 'var(--text2)'
+        };
+        deptGrid.innerHTML = Object.entries(data.department_counts).map(([dept, count]) => `
+          <div class="dept-card">
+            <div class="dept-name">${dept}</div>
+            <div class="dept-count" style="color:${deptColors[dept] || 'var(--text)'}">${count}</div>
+          </div>
+        `).join('');
+
+        // Recent transactions
+        const recentList = document.getElementById('recent-list');
+        if (data.recent_transactions.length === 0) {
+          recentList.innerHTML = `<div class="empty-state"><p>No transactions yet.</p></div>`;
+        } else {
+          recentList.innerHTML = `
+            <div class="table-wrapper">
+              <table>
+                <thead><tr><th>Product</th><th>Type</th><th>Qty</th><th>Amount</th></tr></thead>
+                <tbody>
+                  ${data.recent_transactions.map(t => `
+                    <tr>
+                      <td><div style="font-weight:700">${t.product_name}</div><div style="font-size:0.65rem;color:var(--text3)">${t.product_code}</div></td>
+                      <td><span class="badge badge-${t.transaction_type}">${t.transaction_type.toUpperCase()}</span></td>
+                      <td>${t.quantity}</td>
+                      <td>${formatCurrency(t.total_amount)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>`;
+        }
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

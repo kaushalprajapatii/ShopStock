@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transactions – ShopStock</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="sidebar-placeholder"></div>
+  <div class="app-layout">
+    <div class="main-content">
+      <div class="topbar">
+        <button class="hamburger" id="hamburger">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="topbar-title">Transactions</span>
+      </div>
+      <div class="page-body">
+
+        <div class="page-toolbar">
+          <div class="toolbar-left">
+            <select class="form-control" id="filter-type" style="width:130px">
+              <option value="">All Types</option>
+              <option value="sale">Sales</option>
+              <option value="purchase">Purchases</option>
+            </select>
+            <select class="form-control" id="filter-dept" style="width:150px">
+              <option value="">All Departments</option>
+              <option>Stationery</option>
+              <option>Gifts</option>
+              <option>Furniture</option>
+              <option>Sports</option>
+              <option>Daily Items</option>
+            </select>
+            <input type="date" class="form-control" id="filter-from" style="width:145px">
+            <input type="date" class="form-control" id="filter-to" style="width:145px">
+            <button class="btn btn-ghost btn-sm" id="clear-filters">Clear</button>
+          </div>
+          <div class="toolbar-right">
+            <button class="btn btn-success" id="add-purchase-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Purchase
+            </button>
+            <button class="btn btn-primary" id="add-sale-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Sale
+            </button>
+          </div>
+        </div>
+
+        <div id="transactions-container">
+          <div class="loading"><div class="spinner"></div>Loading…</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Transaction Modal -->
+  <div class="modal-overlay" id="txn-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="txn-modal-title">Add Sale</span>
+        <button class="modal-close" onclick="closeModal('txn-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="txn-type">
+        <div class="form-group">
+          <label class="form-label">Search Product *</label>
+          <input type="text" class="form-control" id="txn-product-search" placeholder="Type name or code…" autocomplete="off">
+          <div id="product-suggestions" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);margin-top:4px;display:none;max-height:180px;overflow-y:auto"></div>
+          <input type="hidden" id="txn-product-id">
+          <div id="selected-product" style="margin-top:8px;padding:8px;background:var(--surface2);border-radius:var(--radius);display:none;font-size:0.78rem">
+            <span id="selected-product-name"></span> — Stock: <strong id="selected-product-stock"></strong>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Quantity *</label>
+            <input type="number" class="form-control" id="txn-qty" min="1" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Price per Unit (₹) *</label>
+            <input type="number" class="form-control" id="txn-price" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+        <div id="txn-total-row" style="background:var(--surface2);padding:10px 12px;border-radius:var(--radius);font-size:0.82rem;margin-bottom:8px;display:none">
+          Total: <strong id="txn-total-display">₹0.00</strong>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note</label>
+          <input type="text" class="form-control" id="txn-note" placeholder="Optional note">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('txn-modal')">Cancel</button>
+        <button class="btn btn-primary" id="save-txn-btn">Record</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/sidebar.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    Auth.requireAuth();
+    let allProductsCache = [];
+
+    async function loadAllProducts() {
+      allProductsCache = await Api.get('/products/');
+    }
+
+    async function loadTransactions() {
+      const type = document.getElementById('filter-type').value;
+      const dept = document.getElementById('filter-dept').value;
+      const from = document.getElementById('filter-from').value;
+      const to = document.getElementById('filter-to').value;
+      const params = new URLSearchParams();
+      if (type) params.set('transaction_type', type);
+      if (dept) params.set('department', dept);
+      if (from) params.set('date_from', from);
+      if (to) params.set('date_to', to);
+
+      document.getElementById('transactions-container').innerHTML =
+        '<div class="loading"><div class="spinner"></div>Loading…</div>';
+
+      try {
+        const txns = await Api.get(`/transactions/?${params}`);
+        renderTransactions(txns);
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    }
+
+    function renderTransactions(txns) {
+      const container = document.getElementById('transactions-container');
+      if (txns.length === 0) {
+        container.innerHTML = `<div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <h3>No transactions found</h3>
+          <p>Record a sale or purchase to get started.</p>
+        </div>`;
+        return;
+      }
+
+      const total = txns.reduce((s, t) => s + t.total_amount, 0);
+      container.innerHTML = `
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Date</th><th>Product</th><th>Dept</th><th>Type</th><th>Qty</th><th>Price/Unit</th><th>Total</th><th>Note</th></tr></thead>
+            <tbody>
+              ${txns.map(t => `
+                <tr>
+                  <td style="white-space:nowrap;font-size:0.72rem;color:var(--text3)">${formatDate(t.created_at)}</td>
+                  <td><div style="font-weight:700">${t.product_name}</div><div style="font-size:0.65rem;color:var(--text3)">${t.product_code}</div></td>
+                  <td>${deptBadge(t.department)}</td>
+                  <td><span class="badge badge-${t.transaction_type}">${t.transaction_type.toUpperCase()}</span></td>
+                  <td style="font-family:var(--font-head);font-weight:700">${t.quantity}</td>
+                  <td>${formatCurrency(t.price_per_unit)}</td>
+                  <td style="font-weight:700">${formatCurrency(t.total_amount)}</td>
+                  <td style="font-size:0.72rem;color:var(--text3)">${t.note || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:10px 14px;font-size:0.72rem;color:var(--text3);border-top:1px solid var(--border);display:flex;justify-content:space-between">
+          <span>${txns.length} transaction${txns.length !== 1 ? 's' : ''}</span>
+          <span>Total: <strong style="color:var(--text)">${formatCurrency(total)}</strong></span>
+        </div>`;
+    }
+
+    // Product search
+    const searchInput = document.getElementById('txn-product-search');
+    const suggestions = document.getElementById('product-suggestions');
+
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.toLowerCase().trim();
+      if (!q) { suggestions.style.display = 'none'; return; }
+      const matches = allProductsCache.filter(p =>
+        p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q)
+      ).slice(0, 8);
+      if (matches.length === 0) { suggestions.style.display = 'none'; return; }
+      suggestions.style.display = 'block';
+      suggestions.innerHTML = matches.map(p => `
+        <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.78rem"
+             onmousedown="selectProduct(${p.id},'${p.name.replace(/'/g,"\\'")}',${p.quantity},${p.price})">
+          <strong>${p.name}</strong> <span style="color:var(--text3)">${p.code}</span>
+          <span style="float:right;color:${p.is_low_stock ? 'var(--danger)' : 'var(--text3)'}">Stock: ${p.quantity}</span>
+        </div>
+      `).join('');
+    });
+
+    function selectProduct(id, name, stock, price) {
+      document.getElementById('txn-product-id').value = id;
+      document.getElementById('txn-product-search').value = name;
+      document.getElementById('selected-product-name').textContent = name;
+      document.getElementById('selected-product-stock').textContent = stock;
+      document.getElementById('selected-product').style.display = 'block';
+      document.getElementById('txn-price').value = price;
+      suggestions.style.display = 'none';
+      updateTotal();
+    }
+
+    function updateTotal() {
+      const qty = parseInt(document.getElementById('txn-qty').value) || 0;
+      const price = parseFloat(document.getElementById('txn-price').value) || 0;
+      const total = qty * price;
+      document.getElementById('txn-total-display').textContent = formatCurrency(total);
+      document.getElementById('txn-total-row').style.display = total > 0 ? 'block' : 'none';
+    }
+
+    document.getElementById('txn-qty').addEventListener('input', updateTotal);
+    document.getElementById('txn-price').addEventListener('input', updateTotal);
+
+    function openTxnModal(type) {
+      document.getElementById('txn-type').value = type;
+      document.getElementById('txn-modal-title').textContent = type === 'sale' ? 'Record Sale' : 'Record Purchase';
+      document.getElementById('save-txn-btn').className = `btn ${type === 'sale' ? 'btn-primary' : 'btn-success'}`;
+      document.getElementById('txn-product-search').value = '';
+      document.getElementById('txn-product-id').value = '';
+      document.getElementById('txn-qty').value = '';
+      document.getElementById('txn-price').value = '';
+      document.getElementById('txn-note').value = '';
+      document.getElementById('selected-product').style.display = 'none';
+      document.getElementById('txn-total-row').style.display = 'none';
+      suggestions.style.display = 'none';
+      openModal('txn-modal');
+    }
+
+    document.getElementById('add-sale-btn').addEventListener('click', () => openTxnModal('sale'));
+    document.getElementById('add-purchase-btn').addEventListener('click', () => openTxnModal('purchase'));
+
+    document.getElementById('save-txn-btn').addEventListener('click', async () => {
+      const type = document.getElementById('txn-type').value;
+      const productId = document.getElementById('txn-product-id').value;
+      const qty = parseInt(document.getElementById('txn-qty').value);
+      const price = parseFloat(document.getElementById('txn-price').value);
+      const note = document.getElementById('txn-note').value.trim();
+
+      if (!productId) { toast('Please select a product', 'error'); return; }
+      if (!qty || qty < 1) { toast('Please enter a valid quantity', 'error'); return; }
+      if (isNaN(price) || price < 0) { toast('Please enter a valid price', 'error'); return; }
+
+      try {
+        await Api.post('/transactions/', {
+          product_id: parseInt(productId),
+          transaction_type: type,
+          quantity: qty,
+          price_per_unit: price,
+          note: note || null
+        });
+        toast(`${type === 'sale' ? 'Sale' : 'Purchase'} recorded successfully`);
+        closeModal('txn-modal');
+        loadTransactions();
+        loadAllProducts(); // refresh stock
+        updateLowStockBadge();
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    });
+
+    document.getElementById('clear-filters').addEventListener('click', () => {
+      ['filter-type','filter-dept','filter-from','filter-to'].forEach(id => document.getElementById(id).value = '');
+      loadTransactions();
+    });
+
+    ['filter-type','filter-dept','filter-from','filter-to'].forEach(id => {
+      document.getElementById(id).addEventListener('change', loadTransactions);
+    });
+
+    loadAllProducts();
+    loadTransactions();
+  </script>
+</body>
+</html>

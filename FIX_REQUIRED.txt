@@ -1,0 +1,24 @@
+IMPORTANT
+
+Delete old virtual environment first.
+
+Windows:
+rmdir /s /q venv
+
+Then create fresh environment:
+
+python -m venv venv
+
+Activate:
+venv\Scripts\activate
+
+Install dependencies:
+pip install -r backend/requirements.txt
+
+Run:
+python run_local.py
+
+This fixes:
+- bcrypt crash
+- passlib compatibility issue
+- password hashing startup failure
